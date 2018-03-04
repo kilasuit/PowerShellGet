@@ -558,7 +558,7 @@ Describe PowerShell.PSGet.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
 
         $expectedFullyQualifiedErrorId = 'InvalidWebUri,Register-PSRepository'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name myNuGetSource -SourceLocation http://www.nonexistingcompany.com/api/v2/} `
+        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name myNuGetSource -SourceLocation https://www.nonexistingcompany.com/api/v2/} `
                                     -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
@@ -573,7 +573,7 @@ Describe PowerShell.PSGet.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
 
         $expectedFullyQualifiedErrorId = 'InvalidWebUri,Register-PSRepository'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name myNuGetSource2 -SourceLocation http://www.nonexistingcompany.com} `
+        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name myNuGetSource2 -SourceLocation https://www.nonexistingcompany.com} `
                                           -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
@@ -603,7 +603,7 @@ Describe PowerShell.PSGet.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
 
         $expectedFullyQualifiedErrorId = 'RepositoryNameContainsWildCards,Add-PackageSource,Microsoft.PowerShell.PackageManagement.Cmdlets.RegisterPackageSource'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name my*NuGetSource -SourceLocation http://www.myget.org/F/powershellgetdemo} `
+        AssertFullyQualifiedErrorIdEquals -scriptblock {Register-PSRepository -Name my*NuGetSource -SourceLocation https://www.myget.org/F/powershellgetdemo} `
                                           -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
@@ -715,6 +715,12 @@ Describe PowerShell.PSGet.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
 
 Describe PowerShell.PSGet.FindModule.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
 
+    # Not executing these tests on MacOS as 
+    # the total execution time is exceeding allowed 50 min in TravisCI daily builds.
+    if($IsMacOS) {
+        return
+    }
+
     BeforeAll {
         SuiteSetup
     }
@@ -782,6 +788,12 @@ Describe PowerShell.PSGet.FindModule.ModuleSourceTests.P1 -Tags 'P1','OuterLoop'
 }
 
 Describe PowerShell.PSGet.InstallModule.ModuleSourceTests.P1 -Tags 'P1','OuterLoop' {
+
+    # Not executing these tests on MacOS as 
+    # the total execution time is exceeding allowed 50 min in TravisCI daily builds.
+    if($IsMacOS) {
+        return
+    }
 
     BeforeAll {
         SuiteSetup

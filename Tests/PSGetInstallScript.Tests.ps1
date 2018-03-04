@@ -58,7 +58,7 @@ function SuiteSetup {
     $script:UntrustedRepoPublishLocation = 'https://powershell.myget.org/F/powershellget-test-items/api/v2/package'
 
     # Create temp folder for saving the scripts
-    $script:TempSavePath="$env:LocalAppData\temp\PSGet_$(Get-Random)"
+    $script:TempSavePath = Join-Path -Path $script:TempPath -ChildPath "PSGet_$(Get-Random)"
     $null = New-Item -Path $script:TempSavePath -ItemType Directory -Force
 
     $script:AddedAllUsersInstallPath    = Set-PATHVariableForScriptsInstallLocation -Scope AllUsers
@@ -500,7 +500,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     # Expected Result: it should fail with an error
     #
     It "InstallScriptNeedsCurrentUserScopeParameterForNonAdminUser" {
-        $NonAdminConsoleOutput = Join-Path $TestDrive 'nonadminconsole-out.txt'
+        $NonAdminConsoleOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'nonadminconsole-out.txt'
         Start-Process "$PSHOME\PowerShell.exe" -ArgumentList '$null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser;
                                                               $null = Import-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force;
                                                               Install-Script -Name Fabrikam-ServerScript -Scope AllUsers' `
@@ -985,6 +985,12 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 }
 
 Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
+
+    # Not executing these tests on MacOS as 
+    # the total execution time is exceeding allowed 50 min in TravisCI daily builds.
+    if($IsMacOS) {
+        return
+    }
 
     BeforeAll {
         SuiteSetup
@@ -1724,7 +1730,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     #
     It ScriptCmdletsWithoutScriptSourceLocation {
         try {
-            Register-PSRepository -Name TestRepo -SourceLocation http://www.nuget.org/api/v2
+            Register-PSRepository -Name TestRepo -SourceLocation https://www.nuget.org/api/v2
             $scriptRepo = Get-PSRepository -Name TestRepo
             Assert (-not $scriptRepo.ScriptSourceLocation) "Test repository 'TestRepo' is not registered properly"
 
