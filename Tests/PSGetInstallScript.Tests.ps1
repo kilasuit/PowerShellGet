@@ -18,8 +18,9 @@ function SuiteSetup {
     Import-Module "$PSScriptRoot\PSGetTestUtils.psm1" -WarningAction SilentlyContinue
     Import-Module "$PSScriptRoot\Asserts.psm1" -WarningAction SilentlyContinue
 
-    $script:ProgramFilesScriptsPath = Get-AllUsersScriptsPath 
-    $script:MyDocumentsScriptsPath = Get-CurrentUserScriptsPath 
+    $script:IsWindowsOS = (-not (Get-Variable -Name IsWindows -ErrorAction Ignore)) -or $IsWindows
+    $script:ProgramFilesScriptsPath = Get-AllUsersScriptsPath
+    $script:MyDocumentsScriptsPath = Get-CurrentUserScriptsPath
     $script:PSGetLocalAppDataPath = Get-PSGetLocalAppDataPath
     $script:TempPath = Get-TempPath
     New-Item -Path $script:MyDocumentsScriptsPath -ItemType Directory -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
@@ -30,10 +31,9 @@ function SuiteSetup {
     $script:psgetModuleInfo = Import-Module PowerShellGet -Global -Force -Passthru
     Import-LocalizedData  script:LocalizedData -filename PSGet.Resource.psd1 -BaseDirectory $script:psgetModuleInfo.ModuleBase
 
-    $script:moduleSourcesFilePath= Join-Path $script:PSGetLocalAppDataPath "PSRepositories.xml"
+    $script:moduleSourcesFilePath = Join-Path $script:PSGetLocalAppDataPath "PSRepositories.xml"
     $script:moduleSourcesBackupFilePath = Join-Path $script:PSGetLocalAppDataPath "PSRepositories.xml_$(get-random)_backup"
-    if(Test-Path $script:moduleSourcesFilePath)
-    {
+    if (Test-Path $script:moduleSourcesFilePath) {
         Rename-Item $script:moduleSourcesFilePath $script:moduleSourcesBackupFilePath -Force
     }
 
@@ -44,8 +44,7 @@ function SuiteSetup {
     Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
     Get-InstalledScript -Name Fabrikam-ClientScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
 
-    if($PSEdition -ne 'Core')
-    {
+    if ($script:IsWindowsOS) {
         $script:userName = "PSGetUser"
         $password = "Password1"
         $null = net user $script:userName $password /add
@@ -61,13 +60,12 @@ function SuiteSetup {
     $script:TempSavePath = Join-Path -Path $script:TempPath -ChildPath "PSGet_$(Get-Random)"
     $null = New-Item -Path $script:TempSavePath -ItemType Directory -Force
 
-    $script:AddedAllUsersInstallPath    = Set-PATHVariableForScriptsInstallLocation -Scope AllUsers
+    $script:AddedAllUsersInstallPath = Set-PATHVariableForScriptsInstallLocation -Scope AllUsers
     $script:AddedCurrentUserInstallPath = Set-PATHVariableForScriptsInstallLocation -Scope CurrentUser
 
-    $script:PSGetSettingsFilePath= Join-Path $script:PSGetLocalAppDataPath 'PowerShellGetSettings.xml'
+    $script:PSGetSettingsFilePath = Join-Path $script:PSGetLocalAppDataPath 'PowerShellGetSettings.xml'
     $script:PSGetSettingsBackupFilePath = Join-Path $script:PSGetLocalAppDataPath "PowerShellGetSettings.xml_$(get-random)_backup"
-    if(Test-Path $script:PSGetSettingsFilePath)
-    {
+    if (Test-Path $script:PSGetSettingsFilePath) {
         Rename-Item $script:PSGetSettingsFilePath $script:PSGetSettingsBackupFilePath -Force
     }
 
@@ -75,53 +73,48 @@ function SuiteSetup {
 }
 
 function SuiteCleanup {
-    if(Test-Path $script:moduleSourcesBackupFilePath)
-    {
+    if (Test-Path $script:moduleSourcesBackupFilePath) {
         Move-Item $script:moduleSourcesBackupFilePath $script:moduleSourcesFilePath -Force
     }
-    else
-    {
+    else {
         RemoveItem $script:moduleSourcesFilePath
     }
 
     # Import the PowerShellGet provider to reload the repositories.
     $null = Import-PackageProvider -Name PowerShellGet -Force
 
-    if($PSEdition -ne 'Core')
-    {
+    if ($script:IsWindowsOS) {
         # Delete the user
         net user $script:UserName /delete | Out-Null
         # Delete the user profile
-        $userProfile = (Get-WmiObject -Class Win32_UserProfile | Where-Object {$_.LocalPath -match $script:UserName})
-        if($userProfile)
-        {
-            RemoveItem $userProfile.LocalPath
+        # run only if cmd is available
+        if (Get-Command -Name Get-WmiObject -ErrorAction SilentlyContinue) {
+            $userProfile = (Get-WmiObject -Class Win32_UserProfile | Where-Object { $_.LocalPath -match $script:UserName })
+            if ($userProfile) {
+                RemoveItem $userProfile.LocalPath
+            }
         }
     }
 
     RemoveItem $script:TempSavePath
 
-    if($script:AddedAllUsersInstallPath)
-    {
+    if ($script:AddedAllUsersInstallPath) {
         Reset-PATHVariableForScriptsInstallLocation -Scope AllUsers
     }
 
-    if($script:AddedCurrentUserInstallPath)
-    {
+    if ($script:AddedCurrentUserInstallPath) {
         Reset-PATHVariableForScriptsInstallLocation -Scope CurrentUser
     }
 
-    if(Test-Path $script:PSGetSettingsBackupFilePath)
-    {
+    if (Test-Path $script:PSGetSettingsBackupFilePath) {
         Move-Item $script:PSGetSettingsBackupFilePath $script:PSGetSettingsFilePath -Force
     }
-    else
-    {
+    else {
         RemoveItem $script:PSGetSettingsFilePath
     }
 }
 
-Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
+Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT', 'InnerLoop' {
 
     BeforeAll {
         SuiteSetup
@@ -135,7 +128,29 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         Get-InstalledScript -Name Fabrikam-Script -ErrorAction SilentlyContinue | Uninstall-Script -Force
         Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         Get-InstalledScript -Name Fabrikam-ClientScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
-    } 
+    }
+
+    # Purpose: InstallShouldBeSilent
+    #
+    # Action: Install-Script "Fabrikam-ServerScript"
+    #
+    # Expected Result: Should pass
+    #
+    It "Install-Script Fabrikam-ServerScript should be silent" {
+        $result = Install-Script -Name "Fabrikam-ServerScript"
+        $result | Should -BeNullOrEmpty
+    }
+
+    # Purpose: InstallShouldReturnOutput
+    #
+    # Action: Install-Script "Fabrikam-ServerScript" -PassThru
+    #
+    # Expected Result: Should pass
+    #
+    It "Install-Script Fabrikam-ServerScript -PassThru should return output" {
+        $result = Install-Script -Name "Fabrikam-ServerScript" -PassThru
+        $result | Should -Not -BeNullOrEmpty
+    }
 
     # Purpose: InstallScriptWithRangeWildCards
     #
@@ -144,8 +159,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     # Expected Result: should fail with an error
     #
     It "InstallScriptWithRangeWildCards" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script 'Fab[rR]ikam?Ser[a-z]erScr?pt','TempName'} `
-                                          -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script 'Fab[rR]ikam?Ser[a-z]erScr?pt', 'TempName' } `
+            -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
     }
 
     # Purpose: InstallNotAvailableScriptWithWildCard
@@ -157,8 +172,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     It "InstallNotAvailableScriptWithWildCard" {
         Install-Script -Name "Fabrikam-ServerScriptW" -ErrorAction SilentlyContinue
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript Fabrikam-ServerScript} `
-                                          -expectedFullyQualifiedErrorId 'NoMatchFound,Microsoft.PowerShell.PackageManagement.Cmdlets.GetPackage'
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript Fabrikam-ServerScript } `
+            -expectedFullyQualifiedErrorId 'NoMatchFound,Microsoft.PowerShell.PackageManagement.Cmdlets.GetPackage'
     }
 
     # Purpose: InstallMultipleScripts
@@ -168,8 +183,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     # Expected Result: two scripts should be installed
     #
     It "InstallMultipleScripts" {
-        Install-Script Fabrikam-ClientScript,Fabrikam-ServerScript
-        $res = Get-InstalledScript Fabrikam-ClientScript,Fabrikam-ServerScript
+        Install-Script Fabrikam-ClientScript, Fabrikam-ServerScript
+        $res = Get-InstalledScript Fabrikam-ClientScript, Fabrikam-ServerScript
         Assert ($res.Count -eq 2) "Install-Script with multiple names should not fail"
     }
 
@@ -181,11 +196,11 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallSingleScript" {
         $scriptName = 'Fabrikam-ServerScript'
-        
+
         $findScriptOutput = Find-Script $scriptName
         $DateTimeBeforeInstall = Get-Date
 
-        Install-Script $scriptName
+        Install-Script $scriptName -scope CurrentUser
         $res = Get-InstalledScript $scriptName
 
         AssertEquals $res.Name $scriptName "Install-Script failed to install $scriptName, $res"
@@ -194,7 +209,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         AssertEquals $res.Description $findScriptOutput.Description "Invalid Description value in Get-InstalledScript metadata, $res"
         AssertEquals $res.Author $findScriptOutput.Author "Invalid Author value in Get-InstalledScript metadata, $res"
         AssertEquals $res.CompanyName $findScriptOutput.CompanyName "Invalid CompanyName value in Get-InstalledScript metadata, $res"
-        AssertEquals $res.Copyright $findScriptOutput.Copyright "Invalid Copyright value in Get-InstalledScript metadata, $res"        
+        AssertEquals $res.Copyright $findScriptOutput.Copyright "Invalid Copyright value in Get-InstalledScript metadata, $res"
         AssertEquals $res.PublishedDate $findScriptOutput.PublishedDate "Invalid PublishedDate value in Get-InstalledScript metadata, $res"
         AssertEquals $res.LicenseUri $findScriptOutput.LicenseUri "Invalid LicenseUri value in Get-InstalledScript metadata, $res"
         AssertEquals $res.ProjectUri $findScriptOutput.ProjectUri "Invalid ProjectUri value in Get-InstalledScript metadata, $res"
@@ -203,7 +218,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         AssertEquals $res.Repository $findScriptOutput.Repository "Invalid Repository value in Get-InstalledScript metadata, $res"
         AssertEquals $res.RepositorySourceLocation $findScriptOutput.RepositorySourceLocation "Invalid RepositorySourceLocation value in Get-InstalledScript metadata, $res"
         AssertEquals $res.PackageManagementProvider $findScriptOutput.PackageManagementProvider "Invalid PackageManagementProvider value in Get-InstalledScript metadata, $res"
-        AssertEquals $res.InstalledLocation $script:ProgramFilesScriptsPath "Invalid InstalledLocation value in Get-InstalledScript metadata, $res"
+        AssertEquals $res.InstalledLocation $script:MyDocumentsScriptsPath "Invalid InstalledLocation value in Get-InstalledScript metadata, $res"
         AssertEquals $res.PowerShellGetFormatVersion $findScriptOutput.PowerShellGetFormatVersion "Invalid PowerShellGetFormatVersion value in Get-InstalledScript metadata, $res"
 
         AssertNotNull $res.InstalledDate "Get-InstalledScript results are not expected, InstalledDate should not be null, $res"
@@ -253,11 +268,11 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallScriptShouldNotFailIfReqVersionAlreadyInstalled" {
         Install-Script Fabrikam-ServerScript -RequiredVersion 2.0
-        $MyError=$null
+        $MyError = $null
         Install-Script Fabrikam-ServerScript -RequiredVersion 2.0 -ErrorVariable MyError
-        Assert ((-not $MyError) -or -not ($MyError | ?{-not (($_.Message -match 'StopUpstreamCommandsException') -or ($_.Message -eq 'System error.'))})) "There should not be any error from second install with required, $MyError"
+        Assert ((-not $MyError) -or -not ($MyError | ? { -not (($_.Message -match 'StopUpstreamCommandsException') -or ($_.Message -eq 'System error.')) })) "There should not be any error from second install with required, $MyError"
     } `
-    -Skip:$($PSCulture -ne 'en-US')
+        -Skip:$($PSCulture -ne 'en-US')
 
     # Purpose: InstallScriptShouldNotFailIfMinVersionAlreadyInstalled
     #
@@ -267,11 +282,11 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallScriptShouldNotFailIfMinVersionAlreadyInstalled" {
         Install-Script Fabrikam-ServerScript -RequiredVersion 2.5
-        $MyError=$null
+        $MyError = $null
         Install-Script Fabrikam-ServerScript -MinimumVersion 2.0 -ErrorVariable MyError
-        Assert ((-not $MyError) -or -not ($MyError | ?{-not (($_.Message -match 'StopUpstreamCommandsException') -or ($_.Message -eq 'System error.'))}))  "There should not be any error from second install with min version, $MyError"
+        Assert ((-not $MyError) -or -not ($MyError | ? { -not (($_.Message -match 'StopUpstreamCommandsException') -or ($_.Message -eq 'System error.')) }))  "There should not be any error from second install with min version, $MyError"
     } `
-    -Skip:$($PSCulture -ne 'en-US')
+        -Skip:$($PSCulture -ne 'en-US')
 
     # Purpose: InstallScriptWithForce
     #
@@ -284,7 +299,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     It InstallScriptWithForce {
         $scriptName = 'Fabrikam-ServerScript'
         Install-Script $scriptName -RequiredVersion 1.0
-        $MyError=$null
+        $MyError = $null
         Install-Script $scriptName -RequiredVersion 1.5 -Force -ErrorVariable MyError
         Assert ($MyError.Count -eq 0) "There should not be any error from force install, $MyError"
 
@@ -305,7 +320,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         $scriptName = 'Fabrikam-ServerScript'
         $version = '1.5'
         Install-Script $scriptName -RequiredVersion $version
-        $MyError=$null
+        $MyError = $null
         Install-Script $scriptName -RequiredVersion $version -Force -ErrorVariable MyError
         Assert ($MyError.Count -eq 0) "There should not be any error from force install, $MyError"
         $res = Get-InstalledScript $scriptName
@@ -323,8 +338,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 
         $expectedFullyQualifiedErrorId = 'NoMatchFoundForCriteria,Microsoft.PowerShell.PackageManagement.Cmdlets.InstallPackage'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ServerScript -MinimumVersion 10.0} `
-                                          -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ServerScript -MinimumVersion 10.0 } `
+            -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
     # Purpose: Install a script using non available RequiredVersion
@@ -337,8 +352,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 
         $expectedFullyQualifiedErrorId = 'NoMatchFoundForCriteria,Microsoft.PowerShell.PackageManagement.Cmdlets.InstallPackage'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ServerScript -RequiredVersion 1.44} `
-                                          -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ServerScript -RequiredVersion 1.44 } `
+            -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
     # Purpose: Install a script using RequiredVersion
@@ -381,8 +396,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 
         $expectedFullyQualifiedErrorId = 'NoMatchFoundForCriteria,Microsoft.PowerShell.PackageManagement.Cmdlets.InstallPackage'
 
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script NonExistentScript} `
-                                          -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script NonExistentScript } `
+            -expectedFullyQualifiedErrorId $expectedFullyQualifiedErrorId
     }
 
     # Purpose: InstallScriptWithPipelineInput
@@ -405,8 +420,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     # Expected Result: Fabrikam-ServerScript and Fabrikam-ClientScript should be installed
     #
     It "InstallMultipleScriptsWithPipelineInput" {
-        Find-Script Fabrikam-ClientScript,Fabrikam-ServerScript | Install-Script
-        $res = Get-InstalledScript Fabrikam-ClientScript,Fabrikam-ServerScript
+        Find-Script Fabrikam-ClientScript, Fabrikam-ServerScript | Install-Script
+        $res = Get-InstalledScript Fabrikam-ClientScript, Fabrikam-ServerScript
         Assert ($res.Count -eq 2) "Install-Script failed to install multiple scripts from Find-Script output"
     }
 
@@ -417,9 +432,9 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     # Expected Result: Fabrikam-ServerScript and Fabrikam-ClientScript should be installed
     #
     It "InstallMultipleScriptsUsingInputObjectParam" {
-        $items = Find-Script Fabrikam-ClientScript,Fabrikam-ServerScript
+        $items = Find-Script Fabrikam-ClientScript, Fabrikam-ServerScript
         Install-Script -InputObject $items
-        $res = Get-InstalledScript Fabrikam-ClientScript,Fabrikam-ServerScript
+        $res = Get-InstalledScript Fabrikam-ClientScript, Fabrikam-ServerScript
         Assert ($res.Count -eq 2) "Install-Script failed to install multiple scripts with -InputObject parameter"
     }
 
@@ -435,15 +450,13 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         $res = Get-InstalledScript $scriptName
         AssertEquals $res.InstalledLocation $script:ProgramFilesScriptsPath "Install-Script with AllUsers scope did not install Fabrikam-ServerScript to program files scripts folder, $script:ProgramFilesScriptsPath"
 
-        if($IsWindows -ne $False)
-        {
+        if ($IsWindows -ne $False) {
             $cmdInfo = Get-Command -Name $scriptName
-            AssertNotNull $cmdInfo "Script installed to the current user scope is not found by the Get-Command cmdlet" 
-            AssertEquals $cmdInfo.Name "$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $cmdlInfo" 
-            
+            AssertNotNull $cmdInfo "Script installed to the current user scope is not found by the Get-Command cmdlet"
+            AssertEquals $cmdInfo.Name "$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $cmdlInfo"
+
             # CommandInfo.Source is not available on 3.0 and 4.0 downlevel PS versions
-            if($PSVersionTable.PSVersion -ge '5.0.0')
-            {
+            if ($PSVersionTable.PSVersion -ge '5.0.0') {
                 AssertEquals $cmdInfo.Source "$($res.InstalledLocation)\$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $($cmdlInfo.Source)"
             }
         }
@@ -460,15 +473,13 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         Install-Script $scriptName -Scope CurrentUser
         $res = Get-InstalledScript $scriptName
         AssertEquals $res.InstalledLocation $script:MyDocumentsScriptsPath "Install-Script with CurrentUser scope did not install Fabrikam-ServerScript to user documents folder, $script:MyDocumentsScriptsPath"
-        if($IsWindows -ne $False)
-        {
+        if ($IsWindows -ne $False) {
             $cmdInfo = Get-Command -Name $scriptName
-            AssertNotNull $cmdInfo "Script installed to the current user scope is not found by the Get-Command cmdlet" 
-            AssertEquals $cmdInfo.Name "$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $cmdlInfo" 
+            AssertNotNull $cmdInfo "Script installed to the current user scope is not found by the Get-Command cmdlet"
+            AssertEquals $cmdInfo.Name "$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $cmdlInfo"
 
             # CommandInfo.Source is not available on 3.0 and 4.0 downlevel PS versions
-            if($PSVersionTable.PSVersion -ge '5.0.0')
-            {
+            if ($PSVersionTable.PSVersion -ge '5.0.0') {
                 AssertEquals $cmdInfo.Source "$($res.InstalledLocation)\$scriptName.ps1" "Script installed to the current user scope is not found by the Get-Command cmdlet, $($cmdlInfo.Source)"
             }
         }
@@ -493,38 +504,88 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         AssertEquals $res2.InstalledLocation $script:ProgramFilesScriptsPath "Install-Script with AllUsers scope and -Force did not install Fabrikam-ServerScript to program files scripts folder, $res2"
     }
 
-    # Purpose: InstallScriptNeedsCurrentUserScopeParameterForNonAdminUser
+    # Purpose: Install a script with all users scope parameter for non-admin user
     #
-    # Action: try to install a script without current user scope in a non-admin console
+    # Action: Try to install a script with all users scope in a non-admin console
     #
-    # Expected Result: it should fail with an error
+    # Expected Result: It should fail with an error
     #
-    It "InstallScriptNeedsCurrentUserScopeParameterForNonAdminUser" {
+    It "InstallScriptWithAllUsersScopeParameterForNonAdminUser" {
         $NonAdminConsoleOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'nonadminconsole-out.txt'
-        Start-Process "$PSHOME\PowerShell.exe" -ArgumentList '$null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser;
-                                                              $null = Import-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force;
-                                                              Install-Script -Name Fabrikam-ServerScript -Scope AllUsers' `
-                                               -Credential $script:credential `
-                                               -Wait `
-                                               -WorkingDirectory $PSHOME `
-                                               -RedirectStandardOutput $NonAdminConsoleOutput
 
-        waitFor {Test-Path $NonAdminConsoleOutput} -timeoutInMilliseconds $script:assertTimeOutms -exceptionMessage "Install-Script on non-admin console failed to complete"
+        $psProcess = "PowerShell.exe"
+        if ($script:IsCoreCLR) {
+            $psProcess = "pwsh.exe"
+        }
+
+        Start-Process $psProcess -ArgumentList '-command if(-not (Get-PSRepository -Name PoshTest -ErrorAction SilentlyContinue)) {
+                                                    Register-PSRepository -Name PoshTest -SourceLocation https://www.poshtestgallery.com/api/v2/ -InstallationPolicy Trusted
+                                                }
+                                                Install-Script -Name Fabrikam-Script -NoPathUpdate -Scope AllUsers -ErrorVariable ev -ErrorAction SilentlyContinue;
+                                                Write-Output "$ev"' `
+            -Credential $script:credential `
+            -Wait `
+            -WorkingDirectory $PSHOME `
+            -RedirectStandardOutput $NonAdminConsoleOutput
+
+        waitFor { Test-Path $NonAdminConsoleOutput } -timeoutInMilliseconds $script:assertTimeOutms -exceptionMessage "Install-Script on non-admin console failed to complete"
         $content = Get-Content $NonAdminConsoleOutput
         RemoveItem $NonAdminConsoleOutput
-        Assert ($content -match "InstallScriptNeedsCurrentUserScopeParameter") "Install script without currentuser scope on non-admin user console should fail, $content"
-        $res = Get-InstalledScript Fabrikam-ServerScript -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-        Assert (-not $res) "Install script without currentuser scope on non-admin user console should not install, $res"
+
+        AssertNotNull ($content) "Install-Script with AllUsers scope on non-admin user console should not succeed"
+        Assert ($content -match "Administrator rights are required to install" ) "Install script with AllUsers scope on non-admin user console should fail, $content"
     } `
-    -Skip:$(
+        -Skip:$(
         $whoamiValue = (whoami)
 
         ($whoamiValue -eq "NT AUTHORITY\SYSTEM") -or
         ($whoamiValue -eq "NT AUTHORITY\LOCAL SERVICE") -or
         ($whoamiValue -eq "NT AUTHORITY\NETWORK SERVICE") -or
-        ($env:APPVEYOR_TEST_PASS -eq 'True') -or
-        ($PSEdition -eq 'Core') -or
-        ($PSVersionTable.PSVersion -lt '4.0.0')
+        ($PSVersionTable.PSVersion -lt '4.0.0') -or
+        (-not $script:IsWindowsOS) -or
+        # Temporarily disable tests for Core
+        ($script:IsCoreCLR)
+    )
+
+    # Purpose: Install a script with default scope parameter for non-admin user
+    #
+    # Action: Try to install a script with default (current user) scope in a non-admin console
+    #
+    # Expected Result: It should succeed and install only to current user
+    #
+    It "InstallScriptDefaultUserScopeParameterForNonAdminUser" {
+        $NonAdminConsoleOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'nonadminconsole-out.txt'
+
+        $psProcess = "PowerShell.exe"
+        if ($script:IsCoreCLR) {
+            $psProcess = "pwsh.exe"
+        }
+
+        Start-Process $psProcess -ArgumentList '-command Install-Script -Name Fabrikam-ServerScript -NoPathUpdate;
+                                                Get-InstalledScript Fabrikam-ServerScript | Format-List Name, InstalledLocation' `
+            -Credential $script:credential `
+            -Wait `
+            -WorkingDirectory $PSHOME `
+            -RedirectStandardOutput $NonAdminConsoleOutput
+
+        waitFor { Test-Path $NonAdminConsoleOutput } -timeoutInMilliseconds $script:assertTimeOutms -exceptionMessage "Install-Script on non-admin console failed to complete"
+        $content = Get-Content $NonAdminConsoleOutput
+        RemoveItem $NonAdminConsoleOutput
+
+        AssertNotNull ($content) "Install-Script with default current user scope on non-admin user console should succeed"
+        Assert ($content -match "Fabrikam-ServerScript") "Script did not install correctly"
+        Assert ($content -match "Documents") "Script did not install to the correct location"
+    } `
+        -Skip:$(
+        $whoamiValue = (whoami)
+
+        ($whoamiValue -eq "NT AUTHORITY\SYSTEM") -or
+        ($whoamiValue -eq "NT AUTHORITY\LOCAL SERVICE") -or
+        ($whoamiValue -eq "NT AUTHORITY\NETWORK SERVICE") -or
+        ($PSVersionTable.PSVersion -lt '4.0.0') -or
+        (-not $script:IsWindowsOS) -or
+        # Temporarily disable tests for Core
+        ($script:IsCoreCLR)
     )
 
     # Purpose: InstallScript_AllUsers_NO_toThePromptForAddingtoPATHVariable
@@ -542,25 +603,22 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Reset-PATHVariableForScriptsInstallLocation -Scope AllUsers
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 1 is mapped to No in prompt
-            $Global:proxy.UI.ChoiceToMake=1
+            $Global:proxy.UI.ChoiceToMake = 1
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Script Fabrikam-ServerScript -Repository PSGallery'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -581,7 +639,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScript_AllUsers_YES_toThePromptForAddingtoPATHVariable
     #
@@ -598,25 +656,22 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Reset-PATHVariableForScriptsInstallLocation -Scope AllUsers
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 0 is mapped to YES in ShouldProcess prompt
-            $Global:proxy.UI.ChoiceToMake=0
+            $Global:proxy.UI.ChoiceToMake = 0
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Script Fabrikam-ServerScript -Repository PSGallery'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -629,8 +684,8 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 
             $res = Get-InstalledScript Fabrikam-ServerScript
             AssertEquals $res.Name 'Fabrikam-ServerScript' "Install-Script should install a script even when prompt is not accepted, $res"
-                                 
-            Assert (($env:PATH -split ';') -contains $script:ProgramFilesScriptsPath) "Install-Script should add AllUsers scope path to PATH environment variable."        
+
+            Assert (($env:PATH -split ';') -contains $script:ProgramFilesScriptsPath) "Install-Script should add AllUsers scope path to PATH environment variable."
         }
         finally {
             # Set the PATH variable to not have the scripts install location in the PATH variable.
@@ -639,7 +694,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScript_CurrentUser_NoPathUpdate_NoPromptForAddingtoPATHVariable
     #
@@ -670,7 +725,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$($IsWindows -eq $false)
+        -Skip:$($IsWindows -eq $false)
 
     # Purpose: InstallScript_CurrentUser_Force_NoPromptForAddingtoPATHVariable
     #
@@ -692,7 +747,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
 
             $currentPATHValue = & $script:psgetModuleInfo Get-EnvironmentVariable -Name 'PATH' -Target $script:EnvironmentVariableTarget.User
             Assert (($currentPATHValue -split ';') -notcontains $script:MyDocumentsScriptsPath) "PATH environment variable is not reset properly. $currentPATHValue"
-            
+
             Install-Script Fabrikam-ServerScript -Repository PSGallery -Scope CurrentUser -Force
 
             $res = Get-InstalledScript Fabrikam-ServerScript
@@ -707,11 +762,11 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             # Set the PATH variable to not have the scripts install location in the PATH variable.
             Set-PATHVariableForScriptsInstallLocation -Scope CurrentUser
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
-           
+
             $script:psgetModuleInfo = Import-Module -Name PowerShellGet -Force -PassThru
         }
     } `
-    -Skip:$($IsWindows -eq $false)
+        -Skip:$($IsWindows -eq $false)
 
     # Purpose: InstallScript_CurrentUser_NO_toThePromptForAddingtoPATHVariable
     #
@@ -728,25 +783,22 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Reset-PATHVariableForScriptsInstallLocation -Scope CurrentUser
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 1 is mapped to No in prompt
-            $Global:proxy.UI.ChoiceToMake=1
+            $Global:proxy.UI.ChoiceToMake = 1
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Script Fabrikam-ServerScript -Repository PSGallery -Scope CurrentUser'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -766,7 +818,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScript_CurrentUser_YES_toThePromptForAddingtoPATHVariable
     #
@@ -783,25 +835,22 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Reset-PATHVariableForScriptsInstallLocation -Scope CurrentUser
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 0 is mapped to YES in ShouldProcess prompt
-            $Global:proxy.UI.ChoiceToMake=0
+            $Global:proxy.UI.ChoiceToMake = 0
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Script Fabrikam-ServerScript -Repository PSGallery -Scope CurrentUser'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -823,7 +872,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScriptWithWhatIf
     #
@@ -833,21 +882,18 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallScriptWithWhatIf" {
         $outputPath = $script:TempPath
-        $guid =  [system.guid]::newguid().tostring()
+        $guid = [system.guid]::newguid().tostring()
         $outputFilePath = Join-Path $outputPath "$guid"
         $runspace = CreateRunSpace $outputFilePath 1
         $content = $null
 
-        try
-        {
+        try {
             $result = ExecuteCommand $runspace 'Install-Script -Name Fabrikam-ServerScript -WhatIf'
         }
-        finally
-        {
+        finally {
             $fileName = "WriteLine-0.txt"
             $path = join-path $outputFilePath $fileName
-            if(Test-Path $path)
-            {
+            if (Test-Path $path) {
                 $content = get-content $path
             }
 
@@ -862,7 +908,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         $res = Get-InstalledScript Fabrikam-ServerScript -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         Assert (-not $res) "Install-Script should not install the script with -WhatIf option"
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScriptWithConfirmAndNoToPrompt
     #
@@ -872,24 +918,21 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallScriptWithConfirmAndNoToPrompt" {
         $outputPath = $script:TempPath
-        $guid =  [system.guid]::newguid().tostring()
+        $guid = [system.guid]::newguid().tostring()
         $outputFilePath = Join-Path $outputPath "$guid"
         $runspace = CreateRunSpace $outputFilePath 1
 
         # 2 is mapped to NO in ShouldProcess prompt
-        $Global:proxy.UI.ChoiceToMake=2
+        $Global:proxy.UI.ChoiceToMake = 2
         $content = $null
 
-        try
-        {
+        try {
             $result = ExecuteCommand $runspace 'Install-Script Fabrikam-ServerScript -Repository PSGallery -Confirm'
         }
-        finally
-        {
+        finally {
             $fileName = "PromptForChoice-0.txt"
             $path = join-path $outputFilePath $fileName
-            if(Test-Path $path)
-            {
+            if (Test-Path $path) {
                 $content = get-content $path
             }
 
@@ -905,7 +948,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         $res = Get-InstalledScript Fabrikam-ServerScript -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         AssertNull $res "Install-Script should not install a script if Confirm is not accepted"
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallScriptWithConfirmAndYesToPrompt
     #
@@ -915,24 +958,21 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     #
     It "InstallScriptWithConfirmAndYesToPrompt" {
         $outputPath = $script:TempPath
-        $guid =  [system.guid]::newguid().tostring()
+        $guid = [system.guid]::newguid().tostring()
         $outputFilePath = Join-Path $outputPath "$guid"
         $runspace = CreateRunSpace $outputFilePath 1
 
         # 0 is mapped to YES in ShouldProcess prompt
-        $Global:proxy.UI.ChoiceToMake=0
+        $Global:proxy.UI.ChoiceToMake = 0
         $content = $null
 
-        try
-        {
+        try {
             $result = ExecuteCommand $runspace 'Find-Script Fabrikam-ServerScript | Install-Script -Confirm'
         }
-        finally
-        {
+        finally {
             $fileName = "PromptForChoice-0.txt"
             $path = join-path $outputFilePath $fileName
-            if(Test-Path $path)
-            {
+            if (Test-Path $path) {
                 $content = get-content $path
             }
 
@@ -948,7 +988,7 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
         $res = Get-InstalledScript Fabrikam-ServerScript
         AssertEquals $res.Name 'Fabrikam-ServerScript' "Install-Script should install a script if Confirm is accepted, $res"
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     <#
     Purpose: Validate the Get-InstalledScript
@@ -984,11 +1024,11 @@ Describe PowerShell.PSGet.InstallScriptTests -Tags 'BVT','InnerLoop' {
     }
 }
 
-Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
+Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1', 'OuterLoop' {
 
-    # Not executing these tests on MacOS as 
+    # Not executing these tests on MacOS as
     # the total execution time is exceeding allowed 50 min in TravisCI daily builds.
-    if($IsMacOS) {
+    if ($IsMacOS) {
         return
     }
 
@@ -1004,7 +1044,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
         Get-InstalledScript -Name Fabrikam-Script -ErrorAction SilentlyContinue | Uninstall-Script -Force
         Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         Get-InstalledScript -Name Fabrikam-ClientScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
-    } 
+    }
 
     # Purpose: Install a script with prefixed wildcard
     #
@@ -1012,9 +1052,9 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     #
     # Expected Result: should fail
     #
-    It "InstallScriptWithPrefixWildCard" {        
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script *kam-ServerScript} `
-                                          -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
+    It "InstallScriptWithPrefixWildCard" {
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script *kam-ServerScript } `
+            -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
     }
 
     # Purpose: Install a script with postfixed wildcard
@@ -1024,8 +1064,8 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: should fail
     #
     It "InstallScriptWithPostfixWildCard" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ServerScri*} `
-                                          -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ServerScri* } `
+            -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
     }
 
     # Purpose: Install a script with wildcard
@@ -1035,8 +1075,8 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: should fail with an error
     #
     It "InstallScriptWithWildCards" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script *abrikam-ServerScrip*} `
-                                          -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script *abrikam-ServerScrip* } `
+            -expectedFullyQualifiedErrorId 'NameShouldNotContainWildcardCharacters,Install-Script'
     }
 
     # Purpose: InstallScriptWithVersionParams
@@ -1046,8 +1086,8 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: Should fail with an error id
     #
     It "InstallScriptWithVersionParams" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ServerScript -MinimumVersion 1.0 -RequiredVersion 5.0} `
-                                          -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Install-Script"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ServerScript -MinimumVersion 1.0 -RequiredVersion 5.0 } `
+            -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Install-Script"
     }
 
     # Purpose: InstallMultipleNamesWithReqVersion
@@ -1057,8 +1097,8 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: Should fail with an error id
     #
     It "InstallMultipleNamesWithReqVersion" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ClientScript,Fabrikam-ServerScript -RequiredVersion 2.0} `
-                                          -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Install-Script"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ClientScript, Fabrikam-ServerScript -RequiredVersion 2.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Install-Script"
     }
 
     # Purpose: InstallMultipleNamesWithMinVersion
@@ -1068,8 +1108,8 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: Should fail with an error id
     #
     It "InstallMultipleNamesWithMinVersion" {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script Fabrikam-ClientScript,Fabrikam-ServerScript -MinimumVersion 2.0} `
-                                          -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Install-Script"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script Fabrikam-ClientScript, Fabrikam-ServerScript -MinimumVersion 2.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Install-Script"
     }
 
     # Purpose: InstallScriptShouldFailIfReqVersionNotAlreadyInstalled
@@ -1086,18 +1126,17 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
         $wv = $null
         Install-Script $scriptName -RequiredVersion 2.0 -WarningAction SilentlyContinue -WarningVariable wv
 
-        $message = $script:LocalizedData.ScriptAlreadyInstalled -f ($InstalledScriptInfo.Version, 
-                                                                    $InstalledScriptInfo.Name, 
-                                                                    $InstalledScriptInfo.InstalledLocation, 
-                                                                    $InstalledScriptInfo.Version, 
-                                                                    '2.0')
+        $message = $script:LocalizedData.ScriptAlreadyInstalled -f ($InstalledScriptInfo.Version,
+            $InstalledScriptInfo.Name,
+            $InstalledScriptInfo.InstalledLocation,
+            $InstalledScriptInfo.Version,
+            '2.0')
         # WarningVariable value doesnt get the warning messages on PS 3.0 and 4.0, known issue.
-        if($PSVersionTable.PSVersion -ge '5.0.0')
-        {
+        if ($PSVersionTable.PSVersion -ge '5.0.0') {
             AssertEqualsCaseInsensitive $wv.Message $message "Install-Script should not re-install a script if it is already installed"
         }
     } `
-    -Skip:$($PSCulture -ne 'en-US')
+        -Skip:$($PSCulture -ne 'en-US')
 
     # Purpose: InstallScriptShouldFailIfMinVersionNotAlreadyInstalled
     #
@@ -1113,14 +1152,14 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
         $wv = $null
         Install-Script $scriptName -MinimumVersion 2.0 -WarningAction SilentlyContinue -WarningVariable wv
 
-        $message = $script:LocalizedData.ScriptAlreadyInstalled -f ($InstalledScriptInfo.Version, 
-                                                                    $InstalledScriptInfo.Name, 
-                                                                    $InstalledScriptInfo.InstalledLocation, 
-                                                                    $InstalledScriptInfo.Version, 
-                                                                    '2.0')
+        $message = $script:LocalizedData.ScriptAlreadyInstalled -f ($InstalledScriptInfo.Version,
+            $InstalledScriptInfo.Name,
+            $InstalledScriptInfo.InstalledLocation,
+            $InstalledScriptInfo.Version,
+            '2.0')
         Assert ($message -match $scriptName) "Install-Script should not re-install a script if it is already installed, $($wv.Message)"
     } `
-    -Skip:$($PSCulture -ne 'en-US')
+        -Skip:$($PSCulture -ne 'en-US')
 
     # Purpose: InstallPackage_Script_AllUsers_NO_toThePromptForAddingtoPATHVariable
     #
@@ -1139,25 +1178,22 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $null = PackageManagement\Import-PackageProvider -Name PowerShellGet -Force
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 1 is mapped to No in prompt
-            $Global:proxy.UI.ChoiceToMake=1
+            $Global:proxy.UI.ChoiceToMake = 1
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Package -Provider PowerShellGet -Type Script -Name Fabrikam-ServerScript -Source PSGallery'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1178,7 +1214,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallPackage_Script_AllUsers_YES_toThePromptForAddingtoPATHVariable
     #
@@ -1197,25 +1233,22 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $null = PackageManagement\Import-PackageProvider -Name PowerShellGet -Force
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 0 is mapped to YES in ShouldProcess prompt
-            $Global:proxy.UI.ChoiceToMake=0
+            $Global:proxy.UI.ChoiceToMake = 0
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Package -Provider PowerShellGet -Type Script -Name Fabrikam-ServerScript -Source PSGallery'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1238,7 +1271,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallPackage_Script_AllUsers_NoPathUpdate_NoPromptForAddingtoPATHVariable
     #
@@ -1271,15 +1304,15 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$($IsWindows -eq $false)
+        -Skip:$($IsWindows -eq $false)
 
-    # Purpose: InstallPackage_Script_AllUsers_Force_NoPromptForAddingtoPATHVariable
+    # Purpose: InstallPackage_Script_Default_User_Force_NoPromptForAddingtoPATHVariable
     #
     # Action: Install-Package -Provider PowerShellGet -Type Script -Name Fabrikam-ServerScript -Source PSGallery -Force
     #
     # Expected Result: script install location should not be added to PATH varaible.
     #
-    It "InstallPackage_Script_AllUsers_Force_NoPromptForAddingtoPATHVariable" {
+    It "InstallPackage_Script_Default_User_Force_NoPromptForAddingtoPATHVariable" {
         try {
             # Remove PSGetSettings.xml file to get the prompt
             RemoveItem -Path $script:PSGetSettingsFilePath
@@ -1294,7 +1327,12 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $res = Get-InstalledScript Fabrikam-ServerScript
             AssertEquals $res.Name 'Fabrikam-ServerScript' "Install-Script should install a script, $res"
 
-            Assert (($env:PATH -split ';') -contains $script:ProgramFilesScriptsPath) "Install-Package should add AllUsers scope path to PATH environment variable."
+            if ($script:IsCoreCLR) {
+                Assert (($env:PATH -split ';') -contains $script:MyDocumentsScriptsPath) "Install-Package should add CurrentUser scope path to PATH environment variable."
+            }
+            else {
+                Assert (($env:PATH -split ';') -contains $script:ProgramFilesScriptsPath) "Install-Package should add AllUsers scope path to PATH environment variable."
+            }
         }
         finally {
             # Set the PATH variable to not have the scripts install location in the PATH variable.
@@ -1303,7 +1341,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$($IsWindows -eq $false)
+        -Skip:$($IsWindows -eq $false)
 
     # Purpose: InstallPackage_Script_CurrentUser_NO_toThePromptForAddingtoPATHVariable
     #
@@ -1321,25 +1359,22 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $null = PackageManagement\Import-PackageProvider -Name PowerShellGet -Force
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 1 is mapped to No in prompt
-            $Global:proxy.UI.ChoiceToMake=1
+            $Global:proxy.UI.ChoiceToMake = 1
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Package -Provider PowerShellGet -Type Script -Name Fabrikam-ServerScript -Source PSGallery -Scope CurrentUser'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1359,7 +1394,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: InstallPackage_Script_CurrentUser_YES_toThePromptForAddingtoPATHVariable
     #
@@ -1377,25 +1412,22 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $null = PackageManagement\Import-PackageProvider -Name PowerShellGet -Force
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 0 is mapped to YES in ShouldProcess prompt
-            $Global:proxy.UI.ChoiceToMake=0
+            $Global:proxy.UI.ChoiceToMake = 0
 
             $content = $null
 
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace 'Install-Package -Provider PowerShellGet -Type Script -Name Fabrikam-ServerScript -Source PSGallery -Scope CurrentUser'
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1417,7 +1449,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-InstalledScript -Name Fabrikam-ServerScript -ErrorAction SilentlyContinue | Uninstall-Script -Force
         }
     } `
-    -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
+        -Skip:$(($PSEdition -eq 'Core') -or ([System.Environment]::OSVersion.Version -lt "6.2.9200.0") -or ($PSCulture -ne 'en-US'))
 
     # Purpose: Install a script from an untrusted repository and press No to the prompt
     #
@@ -1433,32 +1465,27 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             AssertEqualsCaseInsensitive $scriptRepo.ScriptSourceLocation $script:UntrustedRepoSourceLocation "Test repository 'UntrustedTestRepo' is not registered properly"
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
-            if($PSVersionTable.PSVersion -ge '4.0.0')
-            {
+            if ($PSVersionTable.PSVersion -ge '4.0.0') {
                 # 2 is mapped to NO in ShouldProcess prompt
-                $Global:proxy.UI.ChoiceToMake=2
+                $Global:proxy.UI.ChoiceToMake = 2
             }
-            else
-            {
+            else {
                 # 1 is mapped to No in prompt
-                $Global:proxy.UI.ChoiceToMake=1
+                $Global:proxy.UI.ChoiceToMake = 1
             }
 
             $content = $null
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace "Install-Script Fabrikam-ServerScript -Repository UntrustedTestRepo"
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1476,7 +1503,7 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-PSRepository -Name UntrustedTestRepo -ErrorAction SilentlyContinue | Unregister-PSRepository -ErrorAction SilentlyContinue
         }
     } `
-    -Skip:$(($PSCulture -ne 'en-US') -or ($PSVersionTable.PSVersion -lt '4.0.0') -or ($PSEdition -eq 'Core'))
+        -Skip:$(($PSCulture -ne 'en-US') -or ($PSVersionTable.PSVersion -lt '4.0.0') -or ($PSEdition -eq 'Core'))
 
     # Purpose: Install a script from an untrusted repository and press YES to the prompt
     #
@@ -1492,23 +1519,20 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             AssertEqualsCaseInsensitive $scriptRepo.ScriptSourceLocation $script:UntrustedRepoSourceLocation "Test repository 'UntrustedTestRepo' is not registered properly"
 
             $outputPath = $script:TempPath
-            $guid =  [system.guid]::newguid().tostring()
+            $guid = [system.guid]::newguid().tostring()
             $outputFilePath = Join-Path $outputPath "$guid"
             $runspace = CreateRunSpace $outputFilePath 1
 
             # 0 is mapped to YES in prompt
-            $Global:proxy.UI.ChoiceToMake=0
+            $Global:proxy.UI.ChoiceToMake = 0
             $content = $null
-            try
-            {
+            try {
                 $result = ExecuteCommand $runspace "Install-Script Fabrikam-ServerScript -Repository UntrustedTestRepo"
             }
-            finally
-            {
+            finally {
                 $fileName = "PromptForChoice-0.txt"
                 $path = join-path $outputFilePath $fileName
-                if(Test-Path $path)
-                {
+                if (Test-Path $path) {
                     $content = get-content $path
                 }
 
@@ -1526,54 +1550,54 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-PSRepository -Name UntrustedTestRepo -ErrorAction SilentlyContinue | Unregister-PSRepository -ErrorAction SilentlyContinue
         }
     } `
-    -Skip:$(($PSCulture -ne 'en-US') -or ($PSVersionTable.PSVersion -lt '4.0.0') -or ($PSEdition -eq 'Core'))
+        -Skip:$(($PSCulture -ne 'en-US') -or ($PSVersionTable.PSVersion -lt '4.0.0') -or ($PSEdition -eq 'Core'))
 
     # Get-InstalledScript error cases
     It ValidateGetInstalledScriptWithMultiNamesAndRequiredVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript,Fabrikam-ServerScript -RequiredVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript, Fabrikam-ServerScript -RequiredVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithMultiNamesAndMinVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript,Fabrikam-ServerScript -MinimumVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript, Fabrikam-ServerScript -MinimumVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithMultiNamesAndMaxVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript,Fabrikam-ServerScript -MaximumVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript, Fabrikam-ServerScript -MaximumVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleWildcardNameAndRequiredVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-Client*ipt -RequiredVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-Client*ipt -RequiredVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleWildcardNameAndMinVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-Client*ipt -MinimumVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-Client*ipt -MinimumVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleWildcardNameAndMaxVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-Client*ipt -MaximumVersion 3.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-Client*ipt -MaximumVersion 3.0 } `
+            -expectedFullyQualifiedErrorId "VersionParametersAreAllowedOnlyWithSingleName,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleNameRequiredandMinVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript -RequiredVersion 3.0 -MinimumVersion 1.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript -RequiredVersion 3.0 -MinimumVersion 1.0 } `
+            -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleNameRequiredandMaxVersion {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript -RequiredVersion 3.0 -MaximumVersion 1.0 } `
-                                    -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript -RequiredVersion 3.0 -MaximumVersion 1.0 } `
+            -expectedFullyQualifiedErrorId "VersionRangeAndRequiredVersionCannotBeSpecifiedTogether,Get-InstalledScript"
     }
 
     It ValidateGetInstalledScriptWithSingleNameInvalidMinMaxRange {
-        AssertFullyQualifiedErrorIdEquals -scriptblock {Get-InstalledScript -Name Fabrikam-ClientScript -MinimumVersion 3.0 -MaximumVersion 1.0 } `
-                                    -expectedFullyQualifiedErrorId "MinimumVersionIsGreaterThanMaximumVersion,Get-InstalledScript"
+        AssertFullyQualifiedErrorIdEquals -scriptblock { Get-InstalledScript -Name Fabrikam-ClientScript -MinimumVersion 3.0 -MaximumVersion 1.0 } `
+            -expectedFullyQualifiedErrorId "MinimumVersionIsGreaterThanMaximumVersion,Get-InstalledScript"
     }
- 
+
     # Purpose: Validate Install-Script cmdlet with a script with dependencies
     #
     # Action: Install-Script -Name Script-WithDependencies1
@@ -1586,15 +1610,14 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
         $DepScriptDetails = $null
         $DepModuleDetails = $null
 
-        try
-        {
+        try {
             $res1 = Find-Script -Name $ScriptName -MaximumVersion "1.0" -MinimumVersion "0.1"
             AssertEquals $res1.Name $ScriptName "Find-Script didn't find the exact script which has dependencies, $res1"
 
             $DepencyNames = $res1.Dependencies.Name
 
             $res2 = Find-Script -Name $ScriptName -IncludeDependencies -MaximumVersion "1.0" -MinimumVersion "0.1"
-            Assert ($res2.Count -ge ($DepencyNames.Count+1)) "Find-Script with -IncludeDependencies returned wrong results, $res2"
+            Assert ($res2.Count -ge ($DepencyNames.Count + 1)) "Find-Script with -IncludeDependencies returned wrong results, $res2"
 
             Install-Script -Name $ScriptName -MaximumVersion "1.0" -MinimumVersion "0.1"
             $ActualScriptDetails = Get-InstalledScript -Name $ScriptName -RequiredVersion $res1.Version
@@ -1604,21 +1627,19 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $DepModuleDetails = Get-InstalledModule -Name $DepencyNames -ErrorAction SilentlyContinue
 
             $DepencyNames | ForEach-Object {
-                                if((-not $DepScriptDetails -or $DepScriptDetails.Name -notcontains $_) -and 
-                                   (-not $DepModuleDetails -or $DepModuleDetails.Name -notcontains $_))
-                                {
-                                    Assert $false "Script dependency $_ is not installed"
-                                }
-                            }
+                if ((-not $DepScriptDetails -or $DepScriptDetails.Name -notcontains $_) -and
+                    (-not $DepModuleDetails -or $DepModuleDetails.Name -notcontains $_)) {
+                    Assert $false "Script dependency $_ is not installed"
+                }
+            }
         }
-        finally
-        {
+        finally {
             Uninstall-Script -ErrorAction SilentlyContinue $ScriptName
-            $DepScriptDetails | ForEach-Object {Uninstall-Script $_.Name -Force -ErrorAction SilentlyContinue}
-            $DepModuleDetails | ForEach-Object {PowerShellGet\Uninstall-Module $_.Name -Force -ErrorAction SilentlyContinue}
+            $DepScriptDetails | ForEach-Object { Uninstall-Script $_.Name -Force -ErrorAction SilentlyContinue }
+            $DepModuleDetails | ForEach-Object { PowerShellGet\Uninstall-Module $_.Name -Force -ErrorAction SilentlyContinue }
         }
     } `
-    -Skip:$($PSVersionTable.PSVersion -lt '5.0.0')
+        -Skip:$($PSVersionTable.PSVersion -lt '5.0.0')
 
     # Purpose: Validate Save-Script cmdlet with a script with dependencies
     #
@@ -1631,18 +1652,17 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             $ScriptName = 'Script-WithDependencies1'
 
             $res1 = Find-Script -Name $ScriptName -RequiredVersion '1.0' -IncludeDependencies
-                          
-            Save-Script -Name $ScriptName -MaximumVersion '1.0' -MinimumVersion '0.1' -Path $script:TempSavePath
 
-            $res1.Name | ForEach-Object {                                           
-                                            $artifactPath = Join-Path -Path $script:TempSavePath -ChildPath $_
-                                            if(-not (Test-Path -Path $artifactPath -PathType Container) -and
-                                                -not (Test-Path -Path "$artifactPath.ps1" -PathType Leaf))
-                                            {
-                                                Assert $false "$_ is not saved with the Save-Script -Name $ScriptName"
-                                            }                                            
-                                        }
-        } 
+            Save-Script -Name $ScriptName -MaximumVersion '1.0' -MinimumVersion '0.1' $script:TempSavePath
+
+            $res1.Name | ForEach-Object {
+                $artifactPath = Join-Path -Path $script:TempSavePath -ChildPath $_
+                if (-not (Test-Path -Path $artifactPath -PathType Container) -and
+                    -not (Test-Path -Path "$artifactPath.ps1" -PathType Leaf)) {
+                    Assert $false "$_ is not saved with the Save-Script -Name $ScriptName"
+                }
+            }
+        }
         finally {
             Remove-Item -Path "$script:TempSavePath\*" -Recurse -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
@@ -1661,14 +1681,13 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Find-Script -Name $ScriptName -RequiredVersion '2.0' | Save-Script -LiteralPath $script:TempSavePath
 
             $res1.Name | ForEach-Object {
-                                            $artifactPath = Join-Path -Path $script:TempSavePath -ChildPath $_
-                                            if(-not (Test-Path -Path $artifactPath -PathType Container) -and
-                                                -not (Test-Path -Path "$artifactPath.ps1" -PathType Leaf))
-                                            {
-                                                Assert $false "$_ is not saved with the Save-Script -Name $ScriptName"
-                                            }
-                                        }
-        } 
+                $artifactPath = Join-Path -Path $script:TempSavePath -ChildPath $_
+                if (-not (Test-Path -Path $artifactPath -PathType Container) -and
+                    -not (Test-Path -Path "$artifactPath.ps1" -PathType Leaf)) {
+                    Assert $false "$_ is not saved with the Save-Script -Name $ScriptName"
+                }
+            }
+        }
         finally {
             Remove-Item -Path "$script:TempSavePath\*" -Recurse -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
         }
@@ -1681,14 +1700,14 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
     # Expected Result: Should get the installed scripts with/without wildcards
     #
     It GetInstalledScriptWithWildcard {
-        $ScriptNames = 'Fabrikam-Script','Fabrikam-ServerScript','Fabrikam-ClientScript'
-            
+        $ScriptNames = 'Fabrikam-Script', 'Fabrikam-ServerScript', 'Fabrikam-ClientScript'
+
         Install-Script -Name $ScriptNames
 
         # ScriptName without wildcards
         $res1 = Get-InstalledScript -Name $ScriptNames[0]
         AssertEquals $res1.Name $ScriptNames[0] "Get-InstalledScript didn't return the exact script, $res1"
-            
+
         # ScriptName with wildcards
         $res2 = Get-InstalledScript -Name "Fabrikam*"
         AssertEquals $res2.count $ScriptNames.Count "Get-InstalledScript didn't return the $ScriptNames scripts, $res2"
@@ -1696,16 +1715,15 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
 
     # Purpose: Validate Install-Script cmdlet with same source location registered with NUGet provider
     #
-    # Expected Result: Get-InstalledScript should return proper Repository and RepositorySourceLocation values 
+    # Expected Result: Get-InstalledScript should return proper Repository and RepositorySourceLocation values
     #    from the PSScript provider only not from the NuGet provider
     #
     It InstallScriptWithSameLocationRegisteredWithNuGetProvider {
         $ScriptName = 'Fabrikam-ServerScript'
         $TempNuGetSourceName = "$(Get-Random)"
         $RepositoryName = "PSGallery"
-        Register-PackageSource -Provider nuget -Name $TempNuGetSourceName -Location $Global:PSGallerySourceUri -Trusted 
-        try
-        {
+        Register-PackageSource -Provider nuget -Name $TempNuGetSourceName -Location $Global:PSGallerySourceUri -Trusted
+        try {
             Install-Script -Name $ScriptName -Repository $RepositoryName
 
             $res1 = Get-InstalledScript -Name $ScriptName
@@ -1714,12 +1732,15 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             AssertEquals $res1.RepositorySourceLocation $Global:PSGallerySourceUri "PSGetItemInfo object was created with wrong RepositorySourceLocation"
             AssertEquals $res1.Repository $RepositoryName "PSGetItemInfo object was created with wrong repository name"
 
-            AssertEquals $res1.InstalledLocation $script:ProgramFilesScriptsPath "Invalid InstalledLocation value on PSGetItemInfo object"
+            $expectedInstalledLocation = $script:ProgramFilesScriptsPath
+            if ($script:IsCoreCLR) {
+                $expectedInstalledLocation = $script:MyDocumentsScriptsPath
+            }
+            AssertEquals $res1.InstalledLocation $expectedInstalledLocation "Invalid InstalledLocation value on PSGetItemInfo object"
         }
-        finally
-        {
+        finally {
             Unregister-PackageSource -ProviderName NuGet -Name $TempNuGetSourceName -Force
-        }            
+        }
     }
 
     # Purpose: Script cmdlets without ScriptSourceLocation value in Repository.
@@ -1733,17 +1754,18 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Register-PSRepository -Name TestRepo -SourceLocation https://www.nuget.org/api/v2
             $scriptRepo = Get-PSRepository -Name TestRepo
             Assert (-not $scriptRepo.ScriptSourceLocation) "Test repository 'TestRepo' is not registered properly"
+            Assert (-not $scriptRepo.ScriptPublishLocation) "Test repository 'TestRepo' is not registered properly"
 
             $repoName = 'TestRepo'
 
-            AssertFullyQualifiedErrorIdEquals -scriptblock {Find-Script -Name TestScriptName -Repository $repoName} `
-                                              -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Find-Script'
+            AssertFullyQualifiedErrorIdEquals -scriptblock { Find-Script -Name TestScriptName -Repository $repoName } `
+                -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Find-Script'
 
-            AssertFullyQualifiedErrorIdEquals -scriptblock {Install-Script -Name TestScriptName -Repository $repoName} `
-                                              -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Install-Script'
+            AssertFullyQualifiedErrorIdEquals -scriptblock { Install-Script -Name TestScriptName -Repository $repoName } `
+                -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Install-Script'
 
-            AssertFullyQualifiedErrorIdEquals -scriptblock {Save-Script -Name TestScriptName -Repository $repoName -Path $script:TempPath} `
-                                              -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Save-Script'
+            AssertFullyQualifiedErrorIdEquals -scriptblock { Save-Script -Name TestScriptName -Repository $repoName -Path $script:TempPath } `
+                -expectedFullyQualifiedErrorId 'ScriptSourceLocationIsMissing,Save-Script'
             $wv = $null
             Find-Package -Name TestScriptName -Source $repoName -ProviderName PowerShellGet -Type Script -WarningVariable wv -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
             $message = $script:LocalizedData.ScriptSourceLocationIsMissing -f ($repoName)
@@ -1753,5 +1775,17 @@ Describe PowerShell.PSGet.InstallScriptTests.P1 -Tags 'P1','OuterLoop' {
             Get-PSRepository -Name TestRepo -ErrorAction SilentlyContinue | Unregister-PSRepository -ErrorAction SilentlyContinue
         }
     } `
-    -Skip:$($PSCulture -ne 'en-US')
+        -Skip:$($PSCulture -ne 'en-US')
+
+    It "Get-InstalledScript cmdlet with leading zeros in RequiredVersion value" {
+        $scriptName = 'Fabrikam-ServerScript'
+        $version = '1.2'
+        Install-Script $scriptName -RequiredVersion $version
+        $res = Get-InstalledScript $scriptName -RequiredVersion '1.02'
+        $res.Name | Should Be $scriptName
+        $res.Version | Should Be $version
+
+        $res = Get-InstalledScript $scriptName -RequiredVersion $version
+        $res.Version | Should Be $version
+    }
 }

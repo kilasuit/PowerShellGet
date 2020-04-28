@@ -5,6 +5,15 @@
 [![PowerShell Gallery - PowerShellGet](https://img.shields.io/badge/PowerShell%20Gallery-PowerShellGet-blue.svg)](https://www.powershellgallery.com/packages/PowerShellGet)
 [![Minimum Supported PowerShell Version](https://img.shields.io/badge/PowerShell-3.0-blue.svg)](https://github.com/PowerShell/PowerShellGet)
 
+Important Note
+==============
+
+This version of the module is currently not in development.
+We are no longer accepting any pull requests to this repository and are not planning any future releases.
+If you have a question, or are seeing an unexpected behavior from PowerShellGet 2.x or below please open an issue in this repository.
+We are tracking the on-going development of the new version of this module in the  [PowerShell/PowerShellGet](https://github.com/powershell/powershellget) repository.
+The [PowerShell/PowerShellGet](https://github.com/powershell/powershellget) repository is also the best place to open any feature requests for this module.
+
 Introduction
 ============
 
@@ -65,7 +74,7 @@ Daily Build status
 Documentation
 =============
 
-[Click here](https://msdn.microsoft.com/en-us/powershell/gallery/psget/overview)
+[Click here](https://docs.microsoft.com/powershell/scripting/gallery/installing-psget?view=powershell-6)
 
 
 Requirements
@@ -82,7 +91,7 @@ Module Dependencies
 Get PowerShellGet Module
 ========================
 
-Please refer to our [documentation](https://msdn.microsoft.com/en-us/powershell/gallery/psget/get_psget_module) for the up-to-date version on how to get the PowerShellGet Module.
+Please refer to our [documentation](https://aka.ms/installing-psget) for the up-to-date version on how to get the PowerShellGet Module.
 
 
 Get PowerShellGet Source
@@ -102,12 +111,45 @@ cd path/to/PowerShellGet
 
 * Import the module
 ```powershell
-Import-Module /path/to/PowerShellGet/PowerShellGet
+Import-Module src/PowerShellGet
 ```
 
 
+Local Development
+=================
+### Visual Studio Code:-
+1. Open VSCode choosing "Run as Administrator"
+2. Select Terminal>Run Task>Install Dependencies
+3. Select Terminal>Run Task>Build and Import Module
+
+for subsequent changes you can just run 'Build and Import Module' or press <kbd>ctrl</kbd> + <kbd>shift</kbd> + <kbd>B</kbd>
+
+### Standard PowerShell:-
+1. Open an administrative PowerShell prompt
+2. Run the following commands
+```PowerShell
+Import-Module "$ClonePath\tools\build.psm1"
+Install-Dependencies
+Install-DevelopmentModule
+```
+
+This will take the published module from ./dist and install it into the powershell module path under the current version of PowerShellGet apending 9999 to the version number.
+
+An explicit or implicit (such as when the test suite is invoked) import of the PowerShell get module will ensure the module version under development gets loaded.
+
+It is therefore easy to see with  ```Get Module``` that the version under development is loaded, like this:-
+
+![alt text](./imgs/readme-getmodule-1.png "")
+
+To remove this module and revert to the production PowerShellGallery published version, simply remove the folder from the module path. (if running VSCode select Terminal>Run Task>Remove Development Module).
+
 Running Tests
 =============
+
+### VSCode
+You can run the test task Terminal>Run Task>Run Full Test Suite
+
+### Non VSCode
 
 Pester-based PowerShellGet Tests are located in `<branch>/PowerShellGet/Tests` folder.
 
@@ -115,9 +157,7 @@ Run following commands in PowerShell Console with Administrator privileges.
 
 ```powershell
 Import-Module "$ClonePath\tools\build.psm1"
-
 Install-Dependencies
-
 Invoke-PowerShellGetTest
 ```
 
